@@ -5,10 +5,13 @@
 # 2. How Tensorflow works (computational graphs, sessions, and some other stuff that is happening in the background)
 # 3. Taking derivatives is very cheap from colah's blog. (regarding backpropagation in neural nets and computational graphs)
 # 4. Reviewed softmax classification.
+# 5. Adversarial images and how models can be "tricked" with them. 
 
 # Notes:
 # Neural network was not used as it is time consuming to train on my laptop.
 # Results of the training could be saved to avoid retraining every time the code is being run.
+# There were very few commits made as I was invloved into process.
+# My usual branching model: master <=> dev <=> {feature names}
 
 from tensorflow.examples.tutorials.mnist import input_data
 import tensorflow as tf
