@@ -8,10 +8,11 @@
 # 5. Adversarial images and how models can be "tricked" with them. 
 
 # Notes:
-# Neural network was not used as it is time consuming to train on my laptop.
-# Results of the training could be saved to avoid retraining every time the code is being run.
-# There were very few commits made as I was invloved into process.
-# My usual branching model: master <=> dev <=> {feature names}
+# 1. Neural network was not used as it is time consuming to train on my laptop.
+# 2. Results of the training could be saved to avoid retraining every time the code is being run.
+# 3. There were very few commits made as I was invloved into process.
+# 4. My usual branching model: master <=> dev <=> {feature names}
+# 5. Tried to achieve high cohession and low coupling in my code.
 
 from tensorflow.examples.tutorials.mnist import input_data
 import tensorflow as tf
@@ -22,93 +23,118 @@ import matplotlib.image as mimage
 from matplotlib.backends.backend_pdf import PdfPages
 import logging
 
-# image dimensions
+SAMPLE_DATASET = input_data.read_data_sets('MNIST_data', one_hot=True)
+# in px
 SAMPLE_DIM = 28
+SAMPLE_CLASSES = 10
 
-# Tensor Flow Tutorial code
-mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
+SAMPLE_VAL_IMAGE = 0
+SAMPLE_VAL_Y = 1
 
-sess = tf.InteractiveSession()
+class ImageClassifier():
+    def __init__(self, data_set, dimensions, classes):
+        self.data_set = data_set
+        self.dimensions = dimensions
+        self.classes = classes
+        self.sess = tf.InteractiveSession()
 
-x = tf.placeholder(tf.float32, shape=[None, SAMPLE_DIM*SAMPLE_DIM])
-y_ = tf.placeholder(tf.float32, shape=[None, 10])
+        # Tensor Flow Tutorial code
+        self.x = tf.placeholder(tf.float32, shape=[None, dimensions*dimensions])
+        self.y_ = tf.placeholder(tf.float32, shape=[None, classes])
 
-W = tf.Variable(tf.zeros([SAMPLE_DIM*SAMPLE_DIM,10]))
-b = tf.Variable(tf.zeros([10]))
+        self.W = tf.Variable(tf.zeros([dimensions*dimensions, classes]))
+        self.b = tf.Variable(tf.zeros([classes]))
 
-sess.run(tf.global_variables_initializer())
+        self.sess.run(tf.global_variables_initializer())
 
-y = tf.matmul(x,W) + b
+        self.y = tf.matmul(self.x,self.W) + self.b
 
-# With lower regularization it is easier to trick the model
-# as mentioned in the artilcle, hence was not introduced.
-cross_entropy = tf.reduce_mean(
-    tf.nn.softmax_cross_entropy_with_logits(logits=y, labels=y_))
+        # With lower regularization it is easier to trick the model
+        # as mentioned in the article, hence it was not introduced.
+        cross_entropy = tf.reduce_mean(
+            tf.nn.softmax_cross_entropy_with_logits(logits=self.y, labels=self.y_))
 
-train_step = tf.train.GradientDescentOptimizer(0.5).minimize(cross_entropy)
+        self.train_step = tf.train.GradientDescentOptimizer(0.5).minimize(cross_entropy)
 
-SAMPLES_TWO = []
+    def train(self):
+        # 1. Feed our model
+        # 2. Collect samples of 2
+        for i in range(1000):
+            batch_xs, batch_ys = self.data_set.train.next_batch(100)
+            self.train_step.run(feed_dict={self.x: batch_xs, self.y_: batch_ys})
 
-VAL_IMAGE = 0
-VAL_Y = 1
-
-# 1. Feed our model
-# 2. Collect samples of 2
-for i in range(1000):
-    batch_xs, batch_ys = mnist.train.next_batch(100)
-
-    if len(SAMPLES_TWO) < 10:
+    def get_samples_of(self, index):
+        # Collect up to 10 samples
+        result = []
+        batch_xs, batch_ys = self.data_set.train.images, self.data_set.train.labels 
         for j in xrange(len(batch_xs)):
             sample = (batch_xs[j], batch_ys[j])
 
-            if sample[VAL_Y][2] and len(SAMPLES_TWO) < 10:
-                SAMPLES_TWO += [sample]
-    
-    train_step.run(feed_dict={x: batch_xs, y_: batch_ys})
+            if sample[SAMPLE_VAL_Y][index] and len(result) < 10:
+                result += [sample]
 
-def reshape_image(image_1d):
-    return tf.reshape(image_1d, [SAMPLE_DIM, SAMPLE_DIM])
+        return result
 
-def show_image(image_1d):
-    image = reshape_image(image_1d)
-    plt.imshow(image.eval())
+    def classify_image(self, image):
+        feed_dict = {self.x: [image]}
+        return tf.argmax(self.sess.run(self.y, feed_dict), 1).eval()
 
-    plt.savefig("fig.png")
-    plt.show()
+    def reshape_image(self, image_1d):
+        return tf.reshape(image_1d, [self.dimensions, self.dimensions])
+
+    def get_weights_of(self, index):
+        w_vals = self.sess.run(self.W)
+        return [row[index] for row in w_vals]
+
+class Interface():
+    def plot_images(self, images):
+        rows = len(images)
+        cols = len(images[0])
+        gs = gridspec.GridSpec(rows, cols, top=1., bottom=0., right=1., left=0., hspace=0.,
+                    wspace=0.)
+
+        for i, g in enumerate(gs):
+            ax = plt.subplot(g)
+            ax.imshow(images[i/cols][i%cols])
+            ax.set_xticks([])
+            ax.set_yticks([])
+                
+        plt.savefig("adv_result.png")
+        plt.show()
+
+    # for personal testing
+    def show_image(self, image_1d):
+        image = reshape_image(image_1d)
+        plt.imshow(image.eval())
+
+        plt.savefig("test.png")
+        plt.show()
 
 def get_adv_image(sample, delta):
-    return (sample, delta, sample + delta)
+    # using array instead of a tuple to keep it mutable
+    return [sample, delta, sample + delta]
 
-def classify_image(image):
-    feed_dict = {x: [image]}
-    return tf.argmax(sess.run(y, feed_dict), 1).eval()
+def reshape_adv_images(adv_images):
+    for i, adv_image in enumerate(adv_images):
+        for j, item in enumerate(adv_image):
+            adv_images[i][j] = classifier.reshape_image(item).eval()
 
-def plot_adv_images(samples):
-    rows = len(samples)
-    cols = len(samples[0])
-    gs = gridspec.GridSpec(rows, cols, top=1., bottom=0., right=1., left=0., hspace=0.,
-                wspace=0.)
+if __name__ == '__main__':
+    classifier = ImageClassifier(SAMPLE_DATASET, SAMPLE_DIM, SAMPLE_CLASSES)
+    classifier.train()
+    # Create adversarial images using weights of "six" as our delta 
+    adv_images = [get_adv_image(sample[SAMPLE_VAL_IMAGE], classifier.get_weights_of(6)) for sample in classifier.get_samples_of(2)]
+    # Log classification results 
+    # (Some adversarial images might not "trick" the model)
+    results = [classifier.classify_image(adv_image[2]) for adv_image in adv_images]
+    logging.info('classified as {}'.format(results))
 
-    for i, g in enumerate(gs):
-        ax = plt.subplot(g)
-        image = reshape_image(samples[i/cols][i%cols]).eval()
-        ax.imshow(image)
-        ax.set_xticks([])
-        ax.set_yticks([])
-            
-    plt.savefig("adv_result.png")
-    plt.show()
+    # reshape images to display in two dimensions before plotting
+    reshape_adv_images(adv_images)
 
-# Using weights of "six" class as our delta 
-w_vals = sess.run(W)
-w_six = [row[6] for row in w_vals]
-adv_images = [get_adv_image(sample[VAL_IMAGE], w_six) for sample in SAMPLES_TWO]
-
-# Log classification results 
-# (Some adversarial images might not "trick" the model)
-classified = [classify_image(adv_image[2]) for adv_image in adv_images]
-logging.info('classified as {}'.format(classified))
-plot_adv_images(adv_images)
+    # print adv_images
+    interface = Interface()
+    interface.plot_images(adv_images)
 
 
 # correct_prediction = tf.equal(tf.argmax(y,1), tf.argmax(y_,1))
